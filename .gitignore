@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# My personal setup notes (contain my ntfy topic): never commit
+SETUP-PRIVATE.md
+
+# Memory for local runs; the GitHub bot keeps its own state.json
+state.local.json
