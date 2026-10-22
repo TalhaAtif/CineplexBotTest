@@ -534,7 +534,7 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
     added = known + dt.timedelta(days=1)
     new_dates = fmt_day(added) if added == end else f"{fmt_day(added)} – {fmt_day(end)}"
     drops = state.setdefault("window_drops", [])
-    body = f"New: {new_dates}.\nSpotted {fmt_day(today)}, {fmt_time(now)} (the bot checks every ~5–15 min)."
+    body = f"New: {new_dates}.\nSpotted {fmt_day(today)}, {fmt_time(now)} (it went up since the previous check)."
     if drops:
         earlier = [dt.datetime.fromisoformat(d["at"]) for d in drops[-4:]]
         body += "\nEarlier drops: " + "; ".join(f"{fmt_day(t.date())} {fmt_time(t)}" for t in reversed(earlier))

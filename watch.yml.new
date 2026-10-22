@@ -1,0 +1,48 @@
+name: Doomsday ticket watch
+
+on:
+  schedule:
+    # Times are UTC. Every 30 min through November, then every 5 min in December, when Doomsday
+    # tickets are likely to drop. Off-the-hour minutes dodge GitHub's busiest slots (schedules are best-effort).
+    - cron: "4,34 * * 10,11 *"
+    - cron: "2-59/5 * * 12 *"
+  workflow_dispatch: # "Run workflow" button, for testing
+
+permissions:
+  contents: write # commits state.json so it remembers what it already alerted on
+
+concurrency:
+  group: doomsday-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }} # newest state.json, even if this run waited in the queue
+
+      - name: Check Cineplex Junxion Erin Mills
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          CINEPLEX_API_KEY: ${{ secrets.CINEPLEX_API_KEY }}
+          WATCH_DATES: ${{ vars.WATCH_DATES }}
+          MOVIE_PATTERN: ${{ vars.MOVIE_PATTERN }}
+        run: python3 watch.py
+
+      - name: Save state
+        if: always()
+        run: |
+          [ -f state.json ] || exit 0
+          git add state.json
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Update watch state"
+          git pull -q --rebase
+          git push -q

@@ -9,7 +9,8 @@ Pings your phone the moment **Avengers: Doomsday** showtimes go on sale at **Cin
 
 ## What it does
 
-- **🎟️ On-sale alert (urgent).** GitHub Actions runs `watch.py` every ~5 minutes. It asks Cineplex's own showtimes
+- **🎟️ On-sale alert (urgent).** GitHub Actions runs `watch.py` every 30 minutes through November and every
+  5 minutes in December, when Doomsday tickets are likely to drop. It asks Cineplex's own showtimes
   API (the one cineplex.com uses) about Junxion Erin Mills (theatre 7313) for Dec 16–20. When bookable Doomsday
   showtimes appear, you get an urgent push listing every showtime and format (UltraAVX, D-BOX…) with a button
   straight into seat selection. After that it only pings you about newly added showtimes.
@@ -47,8 +48,8 @@ Alerts go to [ntfy](https://ntfy.sh) (free phone push, no account needed) and/or
    says how far ahead Junxion's schedule is posted. If tickets are already on sale you get the 🎟️ alert instead,
    and if GitHub can't reach Cineplex you get ⚠️ right away.
 
-Why public: Actions minutes are free and unlimited on public repos; a private repo would burn through the free
-2,000 minutes/month in about a week at this frequency. Secrets stay private either way.
+Why public: Actions minutes are free and unlimited on public repos; a private repo would run out of its free
+2,000 minutes/month once December's 5-minute checks start. Secrets stay private either way.
 
 ## Optional: Discord as well
 
@@ -76,6 +77,7 @@ Add these under Settings → Secrets and variables → Actions (or with `gh secr
 | `MOVIE_PATTERN` | variable | Regex for the film title (default `avengers.*doomsday`) |
 
 To turn off the 📅 new-showtimes pings, add `WINDOW_ALERTS: off` under `env:` in `.github/workflows/watch.yml`.
+To change how often it checks, edit the `cron` lines in the same file (times are UTC).
 
 ## Running it locally
 
@@ -85,15 +87,15 @@ Use `python` on Windows, `python3` on Mac/Linux. Set `NTFY_TOPIC` first, as in s
   schedule is posted, whether Doomsday is bookable). It sends nothing and saves nothing.
 - `python watch.py --test-notify` sends a test alert.
 - `python watch.py --every 60` checks every minute until you press Ctrl+C. Handy on the night you expect tickets,
-  since GitHub's schedule is best-effort (every 5–15 minutes).
+  since GitHub checks every 5 minutes at best and its scheduled runs often start late.
 
 Local runs keep their memory in `state.local.json` (gitignored), separate from the bot's `state.json`.
 
 ## How it works
 
 - `watch.py` is the whole bot: Python 3.9+, standard library only.
-- `.github/workflows/watch.yml` runs it every 5 minutes and commits `state.json`, which is how the bot remembers
-  what it already told you. Don't edit or delete that file.
+- `.github/workflows/watch.yml` runs it on a schedule (every 30 minutes through November, every 5 in December)
+  and commits `state.json`, which is how the bot remembers what it already told you. Don't edit or delete that file.
 - `tests/` has offline tests with Cineplex, ntfy and Discord faked: `python -m unittest discover tests`
 
 ## Troubleshooting
@@ -104,7 +106,8 @@ Local runs keep their memory in `state.local.json` (gitignored), separate from t
   cineplex.com with DevTools → Network, click any `apis.cineplex.com` request, copy the `Ocp-Apim-Subscription-Key`
   header, and run `gh secret set CINEPLEX_API_KEY --body <key>`.
 - **`git push` rejected:** the bot commits `state.json` now and then, so run `git pull --rebase` first.
-- **Gaps between runs:** GitHub runs schedules best-effort; 5–15 minutes (occasionally longer) is normal.
+- **Runs start late or get skipped:** normal. GitHub runs schedules best-effort, so runs often start several
+  minutes late and occasionally don't run at all.
 
 ## When you're done
 
