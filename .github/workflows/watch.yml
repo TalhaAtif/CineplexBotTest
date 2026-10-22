@@ -2,7 +2,10 @@ name: Doomsday ticket watch
 
 on:
   schedule:
-    - cron: "2-59/5 * * * *" # every 5 min, off the busy top-of-hour slot (GitHub runs schedules best-effort)
+    # Times are UTC. Every 30 min through November, then every 5 min in December, when Doomsday
+    # tickets are likely to drop. Off-the-hour minutes dodge GitHub's busiest slots (schedules are best-effort).
+    - cron: "4,34 * * 10,11 *"
+    - cron: "2-59/5 * * 12 *"
   workflow_dispatch: # "Run workflow" button, for testing
 
 permissions:
@@ -18,6 +21,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }} # newest state.json, even if this run waited in the queue
 
       - name: Check Cineplex Junxion Erin Mills
         env:
