@@ -1,4 +1,7 @@
 {
+  "run_log": [
+    {"time_run": "October 23 2026, 12:58pm", "current_on_sale": "Clayface, E.T. the Extra-Terrestrial - Family Favourites, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Verity, Wildwood", "current_last_bookable_day": "October 29"}
+  ],
   "failure_alerted": false,
   "failures": 0,
   "initialized": true,
