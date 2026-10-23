@@ -52,6 +52,13 @@ def regular_day(date):
     ])
 
 
+def big_day(date, n=6):
+    """A busier normal day: n films."""
+    return showtimes(date, [movie(100 + i, f"Film {chr(65 + i)}",
+                                  [experience(["Recliners"], [session(7000 + i, f"{date}T19:00:00")])])
+                            for i in range(n)])
+
+
 def doomsday_dec17():
     return showtimes("2026-12-17", [
         movie(40000, "Avengers: Doomsday", [
@@ -336,6 +343,97 @@ class WatchTest(unittest.TestCase):
         self.assertNotIn("window_through", self.state)
         self.assertFalse(watch.Config.from_env({"WINDOW_ALERTS": "off"}).window_alerts)
         self.assertTrue(watch.Config.from_env({}).window_alerts)
+
+    def test_two_film_presale_is_not_a_batch_when_regular_days_are_bigger(self):
+        self.state = {"initialized": True, "window_through": "2026-10-29"}
+        for day in range(22, 30):
+            self.net.schedule[f"2026-10-{day}"] = big_day(f"2026-10-{day}")
+        self.net.schedule["2026-10-30"] = regular_day("2026-10-30")  # Friday openers on presale
+        self.assertEqual(self.run_check(), [])
+        self.assertEqual(self.state["window_through"], "2026-10-29")
+        self.assertEqual(self.state["run_log"][0]["current_last_bookable_day"], "October 30")  # but it is bookable
+
+        for day in ("2026-10-30", "2026-10-31", "2026-11-01"):
+            self.net.schedule[day] = big_day(day)
+        msg = self.ntfy(self.run_check())[0]
+        self.assertEqual(msg["title"], "📅 Junxion Erin Mills posted showtimes through Sun Nov 1")
+        self.assertTrue(msg["message"].startswith("New: Fri Oct 30 – Sun Nov 1."))
+
+    # ---- run log in state.json ----
+
+    def test_every_run_adds_a_line_to_the_run_log_newest_first(self):
+        self.lone_presale("2026-12-15")  # far-off premiere: outside the scan, not listed
+        self.run_check()
+        self.post_days("2026-10-23", "2026-10-23")
+        self.run_check(dt.datetime(2026, 10, 22, 9, 5, tzinfo=watch.TZ))
+        self.assertEqual(self.state["run_log"], [
+            {"time_run": "October 22 2026, 9:05am", "current_on_sale": "Clayface, Street Fighter",
+             "current_last_bookable_day": "October 23"},
+            {"time_run": "October 21 2026, 11:00pm", "current_on_sale": "Clayface, Street Fighter",
+             "current_last_bookable_day": "October 22"},
+        ])
+        self.assertNotIn("time_run", self.state)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "state.json")
+            watch.save_state(path, self.state)
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+        self.assertEqual(json.loads(text), self.state)  # valid JSON, nothing lost
+        lines = text.splitlines()
+        self.assertEqual(lines[1], '  "run_log": [')
+        self.assertTrue(lines[2].startswith('    {"time_run": "October 22 2026, 9:05am"'))  # one line per run
+        self.assertTrue(lines[3].startswith('    {"time_run": "October 21 2026, 11:00pm"'))
+        keys = list(json.loads(text))
+        self.assertEqual(keys[0], "run_log")
+        self.assertEqual(keys[1:], sorted(keys[1:]))
+
+    def test_run_log_is_capped_and_old_one_run_format_is_kept(self):
+        self.state = {"initialized": True, "time_run": "October 20 2026, 1:00pm", "current_on_sale": "Old",
+                      "current_last_bookable_day": "October 27",
+                      "run_log": [{"time_run": str(i)} for i in range(watch.MAX_RUN_LOG)]}
+        self.run_check()
+        run_log = self.state["run_log"]
+        self.assertEqual(len(run_log), watch.MAX_RUN_LOG)
+        self.assertEqual(run_log[0]["time_run"], "October 21 2026, 11:00pm")
+        self.assertEqual(run_log[1]["current_on_sale"], "Old")
+        self.assertEqual(run_log[2]["time_run"], "0")
+
+    def test_finished_watch_adds_nothing_to_the_log(self):
+        self.run_check(dt.datetime(2026, 12, 21, 9, 0, tzinfo=watch.TZ))
+        self.assertNotIn("run_log", self.state)
+
+    def test_save_state_without_a_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "state.json")
+            for state in ({}, {"failures": 1}, {"run_log": []}, {"run_log": [], "failures": 0}):
+                watch.save_state(path, state)
+                with open(path, encoding="utf-8") as fh:
+                    self.assertEqual(json.load(fh), state)
+
+    def test_on_sale_list_skips_past_sold_out_and_offline_showtimes(self):
+        self.net.schedule[TOMORROW] = showtimes(TOMORROW, [
+            movie(1, "Bookable", [experience(["Recliners"], [session(1, f"{TOMORROW}T19:00:00")])]),
+            movie(2, "Sold Out", [experience(["Recliners"], [session(2, f"{TOMORROW}T19:00:00", sold_out=True)])]),
+            movie(3, "Not Online", [experience(["Recliners"], [session(3, f"{TOMORROW}T19:00:00", online=False)])]),
+        ])
+        self.net.schedule["2026-10-21"] = showtimes("2026-10-21", [  # tonight; NOW is 11 PM
+            movie(4, "Already Started", [experience(["Recliners"], [session(4, "2026-10-21T21:00:00")])])])
+        self.run_check()
+        self.assertEqual(self.state["run_log"][0]["current_on_sale"], "Bookable")
+
+    def test_failed_check_logs_unknown(self):
+        self.net.cineplex_status = 503
+        self.run_check()
+        self.assertEqual(self.state["run_log"], [{"time_run": "October 21 2026, 11:00pm",
+                                                  "current_on_sale": watch.UNKNOWN,
+                                                  "current_last_bookable_day": watch.UNKNOWN}])
+
+    def test_dead_api_gives_up_after_two_failed_requests(self):
+        self.net.cineplex_status = 503
+        sent = self.run_check()
+        self.assertEqual(self.net.showtime_calls, 6)  # 2 dates x 3 attempts, then the rest are skipped
+        self.assertIn("can't read Cineplex", self.ntfy(sent)[0]["title"])
 
     # ---- CLI ----
 

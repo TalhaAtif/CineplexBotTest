@@ -18,8 +18,9 @@ Optional settings:
   CINEPLEX_API_KEY  override Cineplex's public API key if it ever rotates
   WINDOW_ALERTS     "off" stops the new-showtimes-posted pings
   NTFY_SERVER, NTFY_TOKEN, FAIL_ALERT_AFTER (default 3)
-  STATE_FILE        where it remembers what it already sent (default state.json on GitHub
-                    Actions, state.local.json for local runs so the two never clash)
+  STATE_FILE        where it remembers what it already sent and logs every run (default
+                    state.json on GitHub Actions, state.local.json for local runs so the two
+                    never clash)
 """
 from __future__ import annotations
 
@@ -58,6 +59,10 @@ BROWSER_UA = (
 )
 BOT_UA = "doomsday-watch/1.0"  # Discord's CDN rejects Python's default user agent
 DEFAULT_DATES = "2026-12-16..2026-12-20"  # early screenings + opening weekend (opens Fri Dec 18)
+# state.json opens with run_log: one line per run, newest first, with these fields.
+LOG_KEYS = ("time_run", "current_on_sale", "current_last_bookable_day")
+UNKNOWN = "unknown (this check failed)"
+MAX_RUN_LOG = 2000  # newest runs kept in the file; older ones stay in the git history
 # Every seat at Junxion is a recliner; these labels add nothing to an alert.
 NOISE_FORMATS = {"recliners", "recliner seating", "reserved seating", "regular", "standard"}
 
@@ -235,7 +240,11 @@ def discover_api_key() -> str | None:
 
 
 class Cineplex:
-    """Showtimes client: caches per date, recovers once per run from a rotated key."""
+    """Showtimes client: caches per date, recovers once per run from a rotated key, and stops
+    calling after two failed requests in a row, so a run on a dead or swamped API finishes
+    (and can raise the alarm) well inside GitHub's 5-minute job limit."""
+
+    MAX_FAILURES_IN_A_ROW = 2
 
     def __init__(self, cfg: Config, state: dict):
         self.cfg = cfg
@@ -243,10 +252,18 @@ class Cineplex:
         self.key = cfg.api_key or state.get("api_key") or BUNDLED_API_KEY
         self.tried_rediscovery = False
         self.cache: dict = {}
+        self.failures_in_a_row = 0
 
     def showtimes(self, date: dt.date):
         if date not in self.cache:
-            self.cache[date] = self._fetch(date)
+            if self.failures_in_a_row >= self.MAX_FAILURES_IN_A_ROW:
+                raise ApiError("skipped: Cineplex failed the previous requests")
+            try:
+                self.cache[date] = self._fetch(date)
+            except ApiError:
+                self.failures_in_a_row += 1
+                raise
+            self.failures_in_a_row = 0
         return self.cache[date]
 
     def _fetch(self, date: dt.date):
@@ -362,6 +379,28 @@ def films_with_sessions(payload) -> set:
     return films
 
 
+def _bookable(session, now_naive: dt.datetime) -> bool:
+    if not isinstance(session, dict) or not session.get("showStartDateTime"):
+        return False
+    if session.get("isInThePast") is True or session.get("isShowtimeEnabledOnline") is False or session.get("isSoldOut"):
+        return False
+    try:
+        return dt.datetime.fromisoformat(str(session["showStartDateTime"])[:19]) > now_naive
+    except ValueError:
+        return True
+
+
+def bookable_films(payload, now: dt.datetime) -> set:
+    """Films with at least one showtime you can still buy tickets for."""
+    now_naive = now.replace(tzinfo=None)  # Cineplex times are theatre-local
+    films = set()
+    for movie in iter_movies(payload):
+        sessions = (s for e in movie.get("experiences") or [] if isinstance(e, dict) for s in e.get("sessions") or [])
+        if any(_bookable(s, now_naive) for s in sessions):
+            films.add(movie.get("name") or movie.get("title"))
+    return films
+
+
 # --------------------------------------------------------------------------- alerts
 
 
@@ -391,6 +430,16 @@ def fit(text: str, limit: int) -> str:
 
 def fmt_time(t: dt.datetime) -> str:
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
+
+
+def fmt_run_time(t: dt.datetime) -> str:
+    """e.g. "October 23 2026, 11:25am" """
+    return f"{t:%B} {t.day} {t.year}, {t.hour % 12 or 12}:{t.minute:02d}{'am' if t.hour < 12 else 'pm'}"
+
+
+def fmt_long_day(d: dt.date) -> str:
+    """e.g. "October 30" """
+    return f"{d:%B} {d.day}"
 
 
 def fmt_day(d: dt.date) -> str:
@@ -490,13 +539,19 @@ def send_discord(cfg: Config, alert: Alert) -> bool:
 # --------------------------------------------------------------------------- schedule drops
 
 
-def schedule_end(client: Cineplex, start: dt.date, max_days: int = 21) -> dt.date | None:
-    """Last day of the regular schedule running from `start`. A regular day has 2+ films,
-    so a lone early presale (one big film weeks ahead) doesn't count. One empty day is
-    tolerated; two in a row end the run. None if nothing is posted from `start`."""
+def regular_day_min_films(client: Cineplex, today: dt.date) -> int:
+    """Films a day needs to count as part of the regular schedule: half of tomorrow's lineup
+    (at least 2), so early presales for a film or two don't look like a new batch."""
+    tomorrow = len(films_with_sessions(client.showtimes(today + dt.timedelta(days=1))))
+    return max(2, (tomorrow + 1) // 2)
+
+
+def schedule_end(client: Cineplex, start: dt.date, min_films: int = 2, max_days: int = 21) -> dt.date | None:
+    """Last day of the regular schedule running from `start` (days with at least `min_films`
+    films). One gap day is tolerated; two in a row end the run. None if nothing is posted."""
     last, empty, day = None, 0, start
     for _ in range(max_days):
-        if len(films_with_sessions(client.showtimes(day))) >= 2:
+        if len(films_with_sessions(client.showtimes(day))) >= min_films:
             last, empty = day, 0
         else:
             empty += 1
@@ -506,6 +561,29 @@ def schedule_end(client: Cineplex, start: dt.date, max_days: int = 21) -> dt.dat
     return last
 
 
+def on_sale_snapshot(client: Cineplex, today: dt.date, extra_dates, now: dt.datetime, max_days: int = 21):
+    """(films you can buy tickets for now, last day with bookable showtimes). Scans the posted
+    schedule from today until two days in a row have no showtimes, plus the watch dates, so a
+    one-off presale weeks out (like a premiere) isn't seen."""
+    films, last, empty, day = set(), None, 0, today
+    for _ in range(max_days):
+        payload = client.showtimes(day)
+        if films_with_sessions(payload):
+            empty = 0
+            day_films = bookable_films(payload, now)
+            if day_films:
+                films |= day_films
+                last = day
+        else:
+            empty += 1
+            if empty == 2:
+                break
+        day += dt.timedelta(days=1)
+    for date in extra_dates:
+        films |= bookable_films(client.showtimes(date), now)
+    return films, last
+
+
 def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.datetime, dry_run: bool) -> str:
     """Ping when the theatre posts its next batch of showtimes, with when it was spotted.
     Returns a one-line summary for the first-run message instead of pinging separately."""
@@ -513,8 +591,9 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
     known = state.get("window_through")
     known = dt.date.fromisoformat(known) if known else None
     try:
+        min_films = regular_day_min_films(client, today)
         if known is None or known < today:  # first run, or the bot was off long enough to miss drops
-            end = schedule_end(client, today + dt.timedelta(days=1))
+            end = schedule_end(client, today + dt.timedelta(days=1), min_films)
             if end is None:
                 return ""
             state["window_through"] = end.isoformat()
@@ -524,7 +603,7 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
                                   "You'll get a ping with the date and time each time the next batch drops.",
                                   click=cfg.theatre_url, color=0x5865F2), dry_run)
             return summary
-        end = schedule_end(client, known + dt.timedelta(days=1))
+        end = schedule_end(client, known + dt.timedelta(days=1), min_films)
     except ApiError as err:
         warn(f"Skipped the new-showtimes check: {err}")
         return ""
@@ -552,13 +631,30 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
 # --------------------------------------------------------------------------- the check
 
 
+def record_run(state: dict) -> None:
+    """Move this run's log fields into run_log, newest first."""
+    entry = {key: state.pop(key) for key in LOG_KEYS if key in state}
+    if entry:
+        run_log = state.setdefault("run_log", [])
+        run_log.insert(0, entry)
+        del run_log[MAX_RUN_LOG:]
+
+
 def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: bool = False) -> None:
-    now = now or now_local()
+    record_run(state)  # a run that crashed before logging, or a file from the old one-run format
+    try:
+        _run_checks(cfg, state, now or now_local(), dry_run)
+    finally:
+        record_run(state)
+
+
+def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> None:
     today = now.date()
     dates = [d for d in cfg.dates if d >= today]
     if not dates:
         log("Every watch date is in the past. Nothing to do; disable the workflow.")
         return
+    state["time_run"] = fmt_run_time(now)
 
     client = Cineplex(cfg, state)
     sessions: dict[str, Session] = {}
@@ -596,6 +692,7 @@ def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: 
         warn(f"Cineplex check problem: {error}")
 
     if not api_ok or (failed_dates == len(dates) and not sessions):
+        state["current_on_sale"] = state["current_last_bookable_day"] = UNKNOWN
         state["failures"] = state.get("failures", 0) + 1
         threshold = cfg.fail_alert_after if state.get("initialized") else 1
         log(f"Check failed ({state['failures']} in a row).")
@@ -617,6 +714,16 @@ def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: 
     state["failure_alerted"] = False
 
     window_summary = track_schedule_window(cfg, client, state, now, dry_run) if cfg.window_alerts else ""
+
+    try:
+        films, last = on_sale_snapshot(client, today, dates, now)
+        state["current_on_sale"] = ", ".join(sorted(films, key=str.lower)) or "nothing"
+        state["current_last_bookable_day"] = fmt_long_day(last) if last else "none"
+        log(f"On sale at {cfg.theatre_name}: {state['current_on_sale']}. "
+            f"Last bookable day: {state['current_last_bookable_day']}.")
+    except ApiError as err:
+        warn(f"Couldn't list what's on sale: {err}")
+        state["current_on_sale"] = state["current_last_bookable_day"] = UNKNOWN
 
     seen: dict = state.setdefault("seen", {})
     new = sorted((s for s in sessions.values() if s.id not in seen), key=lambda s: s.start)
@@ -668,9 +775,16 @@ def load_state(path: str) -> dict:
 
 
 def save_state(path: str, state: dict) -> None:
+    """run_log first, one line per run (newest on top), then everything else alphabetically."""
+    rest = json.dumps({key: state[key] for key in sorted(state) if key != "run_log"}, indent=2, ensure_ascii=False)
+    if "run_log" in state:
+        runs = ",\n".join("    " + json.dumps(entry, ensure_ascii=False) for entry in state["run_log"])
+        head = '{\n  "run_log": [\n' + runs + "\n  ]" if runs else '{\n  "run_log": []'
+        text = head + ("," + rest[1:] if rest != "{}" else "\n}")
+    else:
+        text = rest
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(state, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+        fh.write(text + "\n")
 
 
 def main(argv=None) -> int:

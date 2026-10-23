@@ -16,7 +16,7 @@ Pings your phone the moment **Avengers: Doomsday** showtimes go on sale at **Cin
   straight into seat selection. After that it only pings you about newly added showtimes.
 - **📅 New-showtimes pings.** Junxion only posts about 8 days ahead. Each time it posts its next batch, you get a
   normal ping saying which dates were added, when the bot spotted them, and when earlier batches dropped, so you
-  learn the pattern before Doomsday week. A lone early presale (one big premiere weeks out) doesn't count.
+  learn the pattern before Doomsday week. Early presales for a film or two don't count.
 - **⚠️ Self-monitoring.** If the bot can't read Cineplex (API change, blocked network), it tells you instead of
   failing silently, and tells you again when it recovers. If Cineplex rotates its public API key, the bot re-reads
   the new one from cineplex.com on its own.
@@ -95,7 +95,10 @@ Local runs keep their memory in `state.local.json` (gitignored), separate from t
 
 - `watch.py` is the whole bot: Python 3.9+, standard library only.
 - `.github/workflows/watch.yml` runs it on a schedule (every 30 minutes through November, every 5 in December)
-  and commits `state.json`, which is how the bot remembers what it already told you. Don't edit or delete that file.
+  and commits `state.json` after every run. The file opens with `run_log`, which gains a line every run (newest on
+  top): when it ran, which films are on sale at Junxion, and the last bookable day. It keeps the latest 2,000 runs;
+  older ones stay in the commit history. The rest of the file is how the bot remembers what it already told you.
+  Don't edit or delete it.
 - `tests/` has offline tests with Cineplex, ntfy and Discord faked: `python -m unittest discover tests`
 
 ## Troubleshooting
@@ -105,7 +108,7 @@ Local runs keep their memory in `state.local.json` (gitignored), separate from t
 - **⚠️ can't read Cineplex:** the message says why. If the API key rotated and auto-recovery failed, open
   cineplex.com with DevTools → Network, click any `apis.cineplex.com` request, copy the `Ocp-Apim-Subscription-Key`
   header, and run `gh secret set CINEPLEX_API_KEY --body <key>`.
-- **`git push` rejected:** the bot commits `state.json` now and then, so run `git pull --rebase` first.
+- **`git push` rejected:** the bot commits `state.json` after every run, so run `git pull --rebase` first.
 - **Runs start late or get skipped:** normal. GitHub runs schedules best-effort, so runs often start several
   minutes late and occasionally don't run at all.
 
