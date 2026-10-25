@@ -112,7 +112,8 @@ class WatchTest(unittest.TestCase):
         self._real = (watch.http_request, watch._sleep)
         watch.http_request = self.net
         watch._sleep = lambda s: None
-        self.cfg = watch.Config(ntfy_topic="doomsday-test", discord_webhook=DISCORD, discord_user_id="42")
+        self.cfg = watch.Config(ntfy_topic="doomsday-test", discord_webhook=DISCORD, discord_user_id="42",
+                                daily_ping=False)  # tested on its own below
         self.state = {}
 
     def tearDown(self):
@@ -358,6 +359,46 @@ class WatchTest(unittest.TestCase):
         msg = self.ntfy(self.run_check())[0]
         self.assertEqual(msg["title"], "📅 Junxion Erin Mills posted showtimes through Sun Nov 1")
         self.assertTrue(msg["message"].startswith("New: Fri Oct 30 – Sun Nov 1."))
+
+    # ---- daily "still working" ping ----
+
+    def test_daily_ping_once_a_day_with_last_bookable_day(self):
+        self.cfg.daily_ping = True
+        self.state = {"initialized": True, "window_through": "2026-10-31"}
+        self.post_days("2026-10-22", "2026-10-31")
+        at = lambda d, h, m=0: dt.datetime(2026, 10, d, h, m, tzinfo=watch.TZ)  # noqa: E731
+        msg = self.ntfy(self.run_check(at(22, 0, 10)))[0]  # first run after midnight
+        self.assertEqual(msg["title"], "✅ Doomsday watch is working")
+        self.assertEqual(msg["message"], "Last bookable day at Junxion Erin Mills: Sat Oct 31.")
+        self.assertEqual(msg["priority"], 2)
+        self.assertEqual(self.run_check(at(22, 5)), [])
+        self.assertEqual(self.run_check(at(22, 23, 55)), [])
+        self.assertEqual(self.ntfy(self.run_check(at(23, 4, 12)))[0]["title"], "✅ Doomsday watch is working")
+
+    def test_no_daily_ping_when_the_check_fails(self):
+        self.cfg.daily_ping = True
+        self.state = {"initialized": True, "window_through": "2026-10-22"}
+        self.net.cineplex_status = 503
+        self.assertEqual(self.run_check(), [])  # 1st failure: below the alert threshold, and no "working" ping
+        self.assertNotIn("last_daily_ping", self.state)
+        self.net.cineplex_status = None
+        self.assertEqual(self.ntfy(self.run_check())[0]["title"], "✅ Doomsday watch is working")
+
+    def test_first_run_message_counts_as_the_daily_ping(self):
+        self.cfg.daily_ping = True
+        sent = self.ntfy(self.run_check())
+        self.assertEqual([m["title"] for m in sent], ["👀 Watching Junxion Erin Mills for Doomsday"])
+        self.assertEqual(self.run_check(), [])
+
+    def test_daily_ping_comes_after_other_alerts_and_can_be_turned_off(self):
+        self.cfg.daily_ping = True
+        self.state = {"initialized": True, "window_through": "2026-10-22"}
+        self.net.schedule["2026-12-17"] = doomsday_dec17()
+        titles = [m["title"] for m in self.ntfy(self.run_check())]
+        self.assertTrue(titles[0].startswith("🎟️ Doomsday tickets are ON SALE"))
+        self.assertEqual(titles[1], "✅ Doomsday watch is working")
+        self.assertFalse(watch.Config.from_env({"DAILY_PING": "off"}).daily_ping)
+        self.assertTrue(watch.Config.from_env({}).daily_ping)
 
     # ---- run log in state.json ----
 

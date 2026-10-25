@@ -20,6 +20,8 @@ Pings your phone the moment **Avengers: Doomsday** showtimes go on sale at **Cin
 - **⚠️ Self-monitoring.** If the bot can't read Cineplex (API change, blocked network), it tells you instead of
   failing silently, and tells you again when it recovers. If Cineplex rotates its public API key, the bot re-reads
   the new one from cineplex.com on its own.
+- **✅ Daily check-in.** The first good run after midnight sends a quiet ping that the bot is working, with the last
+  bookable day. If a day goes by without one, the bot hasn't managed a successful check that day.
 
 Alerts go to [ntfy](https://ntfy.sh) (free phone push, no account needed) and/or a Discord webhook.
 
@@ -76,7 +78,8 @@ Add these under Settings → Secrets and variables → Actions (or with `gh secr
 | `WATCH_DATES` | variable | Dates to watch, e.g. `2026-12-16..2026-12-27` (default Dec 16–20) |
 | `MOVIE_PATTERN` | variable | Regex for the film title (default `avengers.*doomsday`) |
 
-To turn off the 📅 new-showtimes pings, add `WINDOW_ALERTS: off` under `env:` in `.github/workflows/watch.yml`.
+To turn off the 📅 new-showtimes pings, add `WINDOW_ALERTS: off` under `env:` in `.github/workflows/watch.yml`;
+for the ✅ daily check-in, add `DAILY_PING: off`.
 To change how often it checks, edit the `cron` lines in the same file (times are UTC).
 
 ## Running it locally

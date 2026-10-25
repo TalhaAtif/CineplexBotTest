@@ -17,6 +17,7 @@ Optional settings:
   THEATRE_ID        Cineplex location id (default 7313 = Junxion Erin Mills)
   CINEPLEX_API_KEY  override Cineplex's public API key if it ever rotates
   WINDOW_ALERTS     "off" stops the new-showtimes-posted pings
+  DAILY_PING        "off" stops the once-a-day "still working" ping
   NTFY_SERVER, NTFY_TOKEN, FAIL_ALERT_AFTER (default 3)
   STATE_FILE        where it remembers what it already sent and logs every run (default
                     state.json on GitHub Actions, state.local.json for local runs so the two
@@ -104,6 +105,7 @@ class Config:
     fail_alert_after: int = 3
     state_file: str = "state.json"
     window_alerts: bool = True
+    daily_ping: bool = True
 
     @classmethod
     def from_env(cls, env=os.environ) -> "Config":
@@ -134,6 +136,7 @@ class Config:
         cfg.state_file = get("STATE_FILE") or (
             "state.json" if env.get("GITHUB_ACTIONS") == "true" else "state.local.json")
         cfg.window_alerts = (get("WINDOW_ALERTS") or "on").lower() not in ("off", "false", "0", "no")
+        cfg.daily_ping = (get("DAILY_PING") or "on").lower() not in ("off", "false", "0", "no")
         return cfg
 
 
@@ -655,6 +658,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
         log("Every watch date is in the past. Nothing to do; disable the workflow.")
         return
     state["time_run"] = fmt_run_time(now)
+    was_initialized = bool(state.get("initialized"))
 
     client = Cineplex(cfg, state)
     sessions: dict[str, Session] = {}
@@ -715,10 +719,11 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
 
     window_summary = track_schedule_window(cfg, client, state, now, dry_run) if cfg.window_alerts else ""
 
+    last_bookable = None
     try:
-        films, last = on_sale_snapshot(client, today, dates, now)
+        films, last_bookable = on_sale_snapshot(client, today, dates, now)
         state["current_on_sale"] = ", ".join(sorted(films, key=str.lower)) or "nothing"
-        state["current_last_bookable_day"] = fmt_long_day(last) if last else "none"
+        state["current_last_bookable_day"] = fmt_long_day(last_bookable) if last_bookable else "none"
         log(f"On sale at {cfg.theatre_name}: {state['current_on_sale']}. "
             f"Last bookable day: {state['current_last_bookable_day']}.")
     except ApiError as err:
@@ -727,6 +732,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
 
     seen: dict = state.setdefault("seen", {})
     new = sorted((s for s in sessions.values() if s.id not in seen), key=lambda s: s.start)
+    span = f"{fmt_day(dates[0])}–{fmt_day(dates[-1])}" if len(dates) > 1 else fmt_day(dates[0])
     if new:
         first = not state.get("on_sale")
         shown = sorted(sessions.values(), key=lambda s: s.start) if first else new
@@ -739,10 +745,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
             state["initialized"] = True
         else:
             warn("No alert channel accepted the message; will retry on the next run.")
-        return
-
-    span = f"{fmt_day(dates[0])}–{fmt_day(dates[-1])}" if len(dates) > 1 else fmt_day(dates[0])
-    if not state.get("initialized"):
+    elif not state.get("initialized"):
         alert = Alert(
             title=f"👀 Watching {cfg.theatre_name} for Doomsday",
             body=f"Not on sale there yet. Checking {span} every few minutes; you'll get an urgent alert "
@@ -752,12 +755,27 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
         )
         if notify(cfg, alert, dry_run):
             state["initialized"] = True
-        return
-
-    if state.get("on_sale"):
+    elif state.get("on_sale"):
         log(f"On sale; no new showtimes ({len(sessions)} known).")
     else:
         log(f"Not on sale at {cfg.theatre_name} yet ({span}).")
+
+    daily_ping(cfg, state, today, last_bookable, was_initialized, dry_run)
+
+
+def daily_ping(cfg: Config, state: dict, today: dt.date, last_bookable: dt.date | None, was_initialized: bool,
+               dry_run: bool) -> None:
+    """A quiet once-a-day 'still working' ping, sent by the first good run after midnight.
+    If one doesn't show up, the bot hasn't managed a successful check that day."""
+    if not was_initialized:  # the first run's 👀 message already says it's working
+        state["last_daily_ping"] = today.isoformat()
+        return
+    if not cfg.daily_ping or not last_bookable or state.get("last_daily_ping") == today.isoformat():
+        return
+    alert = Alert("✅ Doomsday watch is working", f"Last bookable day at {cfg.theatre_name}: {fmt_day(last_bookable)}.",
+                  priority=2, click=cfg.theatre_url, color=0x23A55A)
+    if notify(cfg, alert, dry_run):
+        state["last_daily_ping"] = today.isoformat()
 
 
 # --------------------------------------------------------------------------- CLI
