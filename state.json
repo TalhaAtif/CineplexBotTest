@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "October 25 2026, 7:10pm", "current_on_sale": "unknown (this check failed)", "current_last_bookable_day": "unknown (this check failed)"},
     {"time_run": "October 25 2026, 4:44pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood", "current_last_bookable_day": "October 31"},
     {"time_run": "October 25 2026, 1:36pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood", "current_last_bookable_day": "October 31"},
     {"time_run": "October 25 2026, 9:53am", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood", "current_last_bookable_day": "October 31"},
@@ -17,7 +18,7 @@
     {"time_run": "October 23 2026, 12:58pm", "current_on_sale": "Clayface, E.T. the Extra-Terrestrial - Family Favourites, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Verity, Wildwood", "current_last_bookable_day": "October 29"}
   ],
   "failure_alerted": false,
-  "failures": 0,
+  "failures": 1,
   "initialized": true,
   "last_daily_ping": "2026-10-25",
   "seen": {},
