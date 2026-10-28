@@ -427,7 +427,8 @@ class WatchTest(unittest.TestCase):
         self.assertTrue(lines[3].startswith('    {"time_run": "October 21 2026, 11:00pm"'))
         keys = list(json.loads(text))
         self.assertEqual(keys[0], "run_log")
-        self.assertEqual(keys[1:], sorted(keys[1:]))
+        self.assertEqual(keys[-1], "new_days_added")
+        self.assertEqual(keys[1:-1], sorted(keys[1:-1]))
 
     def test_run_log_is_capped_and_old_one_run_format_is_kept(self):
         self.state = {"initialized": True, "time_run": "October 20 2026, 1:00pm", "current_on_sale": "Old",
@@ -447,7 +448,9 @@ class WatchTest(unittest.TestCase):
     def test_save_state_without_a_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "state.json")
-            for state in ({}, {"failures": 1}, {"run_log": []}, {"run_log": [], "failures": 0}):
+            for state in ({}, {"failures": 1}, {"run_log": []}, {"run_log": [], "failures": 0},
+                          {"new_days_added": []}, {"run_log": [{"a": 1}], "new_days_added": [{"b": 2}]},
+                          {"failures": 0, "new_days_added": [{"b": 2}, {"c": "é"}]}):
                 watch.save_state(path, state)
                 with open(path, encoding="utf-8") as fh:
                     self.assertEqual(json.load(fh), state)
@@ -466,9 +469,56 @@ class WatchTest(unittest.TestCase):
     def test_failed_check_logs_unknown(self):
         self.net.cineplex_status = 503
         self.run_check()
+        why = "unknown (this check failed: 2026-12-16: HTTP 503)"
         self.assertEqual(self.state["run_log"], [{"time_run": "October 21 2026, 11:00pm",
-                                                  "current_on_sale": watch.UNKNOWN,
-                                                  "current_last_bookable_day": watch.UNKNOWN}])
+                                                  "current_on_sale": why, "current_last_bookable_day": why}])
+
+    # ---- new_days_added at the bottom of state.json ----
+
+    def test_new_days_added_logs_each_time_the_last_bookable_day_moves_later(self):
+        self.state = {"initialized": True, "window_through": "2026-10-29"}
+        self.post_days("2026-10-22", "2026-10-29")
+        at = lambda d, h, m=0: dt.datetime(2026, 10, d, h, m, tzinfo=watch.TZ)  # noqa: E731
+        self.run_check(at(23, 16, 20))
+        self.assertEqual(self.state["new_days_added"], [])  # first look is just the baseline
+
+        self.lone_presale("2026-10-30")
+        self.lone_presale("2026-10-31")
+        self.net.cineplex_status = 503
+        self.run_check(at(23, 19, 26))  # a failed check in between doesn't count as the "check before"
+        self.net.cineplex_status = None
+        self.run_check(at(23, 21, 55))
+        self.run_check(at(24, 3, 12))  # nothing new: no entry
+        self.net.schedule["2026-11-01"] = regular_day("2026-11-01")
+        self.run_check(at(27, 14, 5))
+        self.assertEqual(self.state["new_days_added"], [
+            {"day": "Tuesday", "date": "October 27 2026", "time": "2:05pm", "new_days": "November 1",
+             "added_after": "Saturday 3:12am"},
+            {"day": "Friday", "date": "October 23 2026", "time": "9:55pm", "new_days": "October 30 – October 31",
+             "added_after": "Friday 4:20pm"},
+        ])
+
+    def test_new_days_added_is_rebuilt_from_an_existing_run_log(self):
+        failed = "unknown (this check failed)"
+        entry = lambda t, d: {"time_run": t, "current_on_sale": "x", "current_last_bookable_day": d}  # noqa: E731
+        self.state = {"run_log": [entry("October 25 2026, 9:36pm", "October 31"), entry("October 25 2026, 7:10pm", failed),
+                                  entry("October 23 2026, 9:55pm", "October 31"), entry("October 23 2026, 7:26pm", failed),
+                                  entry("October 23 2026, 4:20pm", "October 29"), entry("October 23 2026, 12:58pm", "October 29")]}
+        watch.backfill_new_days(self.state)
+        self.assertEqual(self.state["new_days_added"], [
+            {"day": "Friday", "date": "October 23 2026", "time": "9:55pm", "new_days": "October 30 – October 31",
+             "added_after": "Friday 4:20pm"}])
+        self.assertEqual(self.state["last_bookable"], {"day": "2026-10-31", "checked": "2026-10-25T21:36"})
+        before = json.dumps(self.state)
+        watch.backfill_new_days(self.state)  # only ever runs once
+        self.assertEqual(json.dumps(self.state), before)
+
+    def test_new_days_across_the_new_year(self):
+        state = {"run_log": [{"time_run": "December 30 2026, 9:00pm", "current_last_bookable_day": "January 7"},
+                             {"time_run": "December 29 2026, 9:00pm", "current_last_bookable_day": "January 6"}]}
+        watch.backfill_new_days(state)
+        self.assertEqual(state["new_days_added"][0]["new_days"], "January 7")
+        self.assertEqual(state["last_bookable"]["day"], "2027-01-07")
 
     def test_dead_api_gives_up_after_two_failed_requests(self):
         self.net.cineplex_status = 503

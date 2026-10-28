@@ -100,8 +100,10 @@ Local runs keep their memory in `state.local.json` (gitignored), separate from t
 - `.github/workflows/watch.yml` runs it on a schedule (every 30 minutes through November, every 5 in December)
   and commits `state.json` after every run. The file opens with `run_log`, which gains a line every run (newest on
   top): when it ran, which films are on sale at Junxion, and the last bookable day. It keeps the latest 2,000 runs;
-  older ones stay in the commit history. The rest of the file is how the bot remembers what it already told you.
-  Don't edit or delete it.
+  older ones stay in the commit history. A failed check logs its reason instead. The file ends with
+  `new_days_added`: each time the last bookable day moved later, with the day, date and time the bot spotted it,
+  the new days, and the previous good check (they went up somewhere between the two). Everything in between is how
+  the bot remembers what it already told you. Don't edit or delete the file.
 - `tests/` has offline tests with Cineplex, ntfy and Discord faked: `python -m unittest discover tests`
 
 ## Troubleshooting

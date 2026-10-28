@@ -60,10 +60,16 @@ BROWSER_UA = (
 )
 BOT_UA = "doomsday-watch/1.0"  # Discord's CDN rejects Python's default user agent
 DEFAULT_DATES = "2026-12-16..2026-12-20"  # early screenings + opening weekend (opens Fri Dec 18)
-# state.json opens with run_log: one line per run, newest first, with these fields.
+# state.json opens with run_log (one line per run, newest first, with LOG_KEYS) and ends with
+# new_days_added (each time the last bookable day moved later, newest first).
+RUN_LOG, NEW_DAYS = "run_log", "new_days_added"
 LOG_KEYS = ("time_run", "current_on_sale", "current_last_bookable_day")
 UNKNOWN = "unknown (this check failed)"
 MAX_RUN_LOG = 2000  # newest runs kept in the file; older ones stay in the git history
+
+
+def unknown(reason) -> str:
+    return f"{UNKNOWN[:-1]}: {str(reason)[:100]})"
 # Every seat at Junxion is a recliner; these labels add nothing to an alert.
 NOISE_FORMATS = {"recliners", "recliner seating", "reserved seating", "regular", "standard"}
 
@@ -256,15 +262,17 @@ class Cineplex:
         self.tried_rediscovery = False
         self.cache: dict = {}
         self.failures_in_a_row = 0
+        self.last_error = ""
 
     def showtimes(self, date: dt.date):
         if date not in self.cache:
             if self.failures_in_a_row >= self.MAX_FAILURES_IN_A_ROW:
-                raise ApiError("skipped: Cineplex failed the previous requests")
+                raise ApiError(f"skipped after repeated failures; last one: {self.last_error}")
             try:
                 self.cache[date] = self._fetch(date)
-            except ApiError:
+            except ApiError as err:
                 self.failures_in_a_row += 1
+                self.last_error = f"{date}: {err}"
                 raise
             self.failures_in_a_row = 0
         return self.cache[date]
@@ -435,9 +443,14 @@ def fmt_time(t: dt.datetime) -> str:
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
 
+def fmt_clock(t: dt.datetime) -> str:
+    """e.g. "9:55pm" """
+    return f"{t.hour % 12 or 12}:{t.minute:02d}{'am' if t.hour < 12 else 'pm'}"
+
+
 def fmt_run_time(t: dt.datetime) -> str:
     """e.g. "October 23 2026, 11:25am" """
-    return f"{t:%B} {t.day} {t.year}, {t.hour % 12 or 12}:{t.minute:02d}{'am' if t.hour < 12 else 'pm'}"
+    return f"{t:%B} {t.day} {t.year}, {fmt_clock(t)}"
 
 
 def fmt_long_day(d: dt.date) -> str:
@@ -638,13 +651,45 @@ def record_run(state: dict) -> None:
     """Move this run's log fields into run_log, newest first."""
     entry = {key: state.pop(key) for key in LOG_KEYS if key in state}
     if entry:
-        run_log = state.setdefault("run_log", [])
+        run_log = state.setdefault(RUN_LOG, [])
         run_log.insert(0, entry)
         del run_log[MAX_RUN_LOG:]
 
 
+def note_new_days(state: dict, last_bookable: dt.date, now: dt.datetime) -> None:
+    """Add a new_days_added entry when the last bookable day moves later than the previous good check's."""
+    known = state.get("last_bookable")
+    if known and last_bookable > dt.date.fromisoformat(known["day"]):
+        first_new = dt.date.fromisoformat(known["day"]) + dt.timedelta(days=1)
+        new_days = fmt_long_day(last_bookable) if first_new == last_bookable else \
+            f"{fmt_long_day(first_new)} – {fmt_long_day(last_bookable)}"
+        checked = dt.datetime.fromisoformat(known["checked"])
+        state.setdefault(NEW_DAYS, []).insert(0, {
+            "day": f"{now:%A}", "date": f"{now:%B} {now.day} {now.year}", "time": fmt_clock(now),
+            "new_days": new_days, "added_after": f"{checked:%A} {fmt_clock(checked)}"})
+        log(f"New bookable days at Junxion: {new_days}.")
+    state["last_bookable"] = {"day": last_bookable.isoformat(), "checked": now.isoformat(timespec="minutes")}
+
+
+def backfill_new_days(state: dict) -> None:
+    """One time: rebuild new_days_added from runs logged before it existed."""
+    if NEW_DAYS in state or "last_bookable" in state:
+        return
+    for entry in reversed(state.get(RUN_LOG, [])):  # oldest first
+        try:
+            ran = dt.datetime.strptime(entry["time_run"], "%B %d %Y, %I:%M%p")
+            day = dt.datetime.strptime(f"{entry['current_last_bookable_day']} {ran.year}", "%B %d %Y").date()
+        except (KeyError, TypeError, ValueError):
+            continue  # failed checks ("unknown ...") and anything else unreadable
+        if day < ran.date() - dt.timedelta(days=180):  # e.g. a January day seen in December
+            day = day.replace(year=ran.year + 1)
+        note_new_days(state, day, ran)
+    state.setdefault(NEW_DAYS, [])
+
+
 def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: bool = False) -> None:
     record_run(state)  # a run that crashed before logging, or a file from the old one-run format
+    backfill_new_days(state)
     try:
         _run_checks(cfg, state, now or now_local(), dry_run)
     finally:
@@ -696,7 +741,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
         warn(f"Cineplex check problem: {error}")
 
     if not api_ok or (failed_dates == len(dates) and not sessions):
-        state["current_on_sale"] = state["current_last_bookable_day"] = UNKNOWN
+        state["current_on_sale"] = state["current_last_bookable_day"] = unknown(errors[0] if errors else "no data")
         state["failures"] = state.get("failures", 0) + 1
         threshold = cfg.fail_alert_after if state.get("initialized") else 1
         log(f"Check failed ({state['failures']} in a row).")
@@ -728,7 +773,9 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
             f"Last bookable day: {state['current_last_bookable_day']}.")
     except ApiError as err:
         warn(f"Couldn't list what's on sale: {err}")
-        state["current_on_sale"] = state["current_last_bookable_day"] = UNKNOWN
+        state["current_on_sale"] = state["current_last_bookable_day"] = unknown(client.last_error or err)
+    if last_bookable:
+        note_new_days(state, last_bookable, now)
 
     seen: dict = state.setdefault("seen", {})
     new = sorted((s for s in sessions.values() if s.id not in seen), key=lambda s: s.start)
@@ -792,15 +839,23 @@ def load_state(path: str) -> dict:
         return {}
 
 
+def _one_line_per_item(key: str, items: list) -> str:
+    rows = ",\n".join("    " + json.dumps(item, ensure_ascii=False) for item in items)
+    return f'  "{key}": [\n{rows}\n  ]' if rows else f'  "{key}": []'
+
+
 def save_state(path: str, state: dict) -> None:
-    """run_log first, one line per run (newest on top), then everything else alphabetically."""
-    rest = json.dumps({key: state[key] for key in sorted(state) if key != "run_log"}, indent=2, ensure_ascii=False)
-    if "run_log" in state:
-        runs = ",\n".join("    " + json.dumps(entry, ensure_ascii=False) for entry in state["run_log"])
-        head = '{\n  "run_log": [\n' + runs + "\n  ]" if runs else '{\n  "run_log": []'
-        text = head + ("," + rest[1:] if rest != "{}" else "\n}")
-    else:
-        text = rest
+    """run_log first and new_days_added last, one line per entry (newest on top); everything else
+    alphabetically in between."""
+    parts = []
+    if RUN_LOG in state:
+        parts.append(_one_line_per_item(RUN_LOG, state[RUN_LOG]))
+    middle = {key: state[key] for key in sorted(state) if key not in (RUN_LOG, NEW_DAYS)}
+    if middle:
+        parts.append(json.dumps(middle, indent=2, ensure_ascii=False)[2:-2])  # drop the outer braces
+    if NEW_DAYS in state:
+        parts.append(_one_line_per_item(NEW_DAYS, state[NEW_DAYS]))
+    text = "{\n" + ",\n".join(parts) + "\n}" if parts else "{}"
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text + "\n")
 
