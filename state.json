@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "October 28 2026, 7:10pm", "current_on_sale": "unknown (this check failed: 2026-10-29 (sanity check): got a non-JSON response (blocked, or Cineplex changed its API))", "current_last_bookable_day": "unknown (this check failed: 2026-10-29 (sanity check): got a non-JSON response (blocked, or Cineplex changed its API))"},
     {"time_run": "October 28 2026, 3:03pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "October 28 2026, 9:28am", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "October 28 2026, 2:13am", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Super Simple Songs, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
@@ -31,7 +32,7 @@
     {"time_run": "October 23 2026, 12:58pm", "current_on_sale": "Clayface, E.T. the Extra-Terrestrial - Family Favourites, Forgotten Island, Other Mommy, Resident Evil, Street Fighter, Verity, Wildwood", "current_last_bookable_day": "October 29"}
   ],
   "failure_alerted": false,
-  "failures": 0,
+  "failures": 1,
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-05",
