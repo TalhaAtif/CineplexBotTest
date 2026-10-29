@@ -1,6 +1,8 @@
 """Offline tests: Cineplex, ntfy and Discord are faked. Payloads use the real field
 names of Cineplex's showtimes API. Run: python3 -m unittest discover tests"""
 import datetime as dt
+import gzip
+import http.client
 import json
 import os
 import sys
@@ -84,6 +86,8 @@ class FakeNet:
         self.chunks = {}
         self.sent = []  # (url, payload) for notifications
         self.showtime_calls = 0
+        self.error_pages = 0  # serve this many HTML error pages (HTTP 200) before real data
+        self.gzip = False
 
     def __call__(self, method, url, headers=None, body=None, timeout=20):
         headers = headers or {}
@@ -94,11 +98,15 @@ class FakeNet:
             self.showtime_calls += 1
             if self.cineplex_status:
                 return self.cineplex_status, b"error"
+            if self.error_pages:
+                self.error_pages -= 1
+                return 200, b"<!DOCTYPE html>\n<html><head><title>Service Unavailable</title></head></html>"
             if headers.get("Ocp-Apim-Subscription-Key") not in self.valid_keys:
                 return 401, b'{"message":"Access denied due to invalid subscription key."}'
             query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
             assert query["locationId"] == ["7313"] and query["language"] == ["en"]
-            return 200, json.dumps(self.schedule.get(query["date"][0], [])).encode()
+            data = json.dumps(self.schedule.get(query["date"][0], [])).encode()
+            return 200, gzip.compress(data) if self.gzip else data
         if url == watch.CINEPLEX_HOME:
             return 200, self.homepage
         if url in self.chunks:
@@ -250,6 +258,54 @@ class WatchTest(unittest.TestCase):
         watch.http_request = html_instead
         sent = self.run_check()
         self.assertIn("non-JSON", self.ntfy(sent)[0]["message"])
+
+    def test_error_page_at_a_busy_time_is_retried_after_a_pause(self):
+        sleeps = []
+        watch._sleep = sleeps.append
+        self.net.error_pages = 2  # first request: two bad answers, then real data on the 3rd try
+        sent = self.run_check()
+        self.assertIn("Watching", self.ntfy(sent)[0]["title"])
+        self.assertEqual(sleeps[:2], list(watch.RETRY_DELAYS))
+        self.assertEqual(self.state["run_log"][0]["current_on_sale"], "Clayface, Street Fighter")
+
+    def test_repeated_error_pages_log_what_cineplex_sent(self):
+        self.net.error_pages = 10_000
+        self.run_check()
+        self.assertEqual(self.state["run_log"][0]["current_on_sale"],
+                         "unknown (this check failed: 2026-12-16: non-JSON response: <!DOCTYPE html> <html><head>"
+                         "<title>Service Unavailable</title></head></html>)")
+
+    def test_requests_are_spaced_out(self):
+        sleeps = []
+        watch._sleep = sleeps.append
+        self.run_check()
+        self.assertGreater(self.net.showtime_calls, 5)
+        self.assertEqual(sleeps, [watch.REQUEST_GAP] * (self.net.showtime_calls - 1))
+
+    def test_gzip_response_is_read(self):
+        self.net.gzip = True
+        self.run_check()
+        self.assertEqual(self.state["run_log"][0]["current_on_sale"], "Clayface, Street Fighter")
+
+    def test_cut_off_response_is_a_network_error_not_a_crash(self):
+        real = self.net.__call__
+        calls = {"n": 0}
+
+        def cut_off(method, url, headers=None, body=None, timeout=20):
+            if url.startswith(watch.API_BASE) and calls["n"] < 2:
+                calls["n"] += 1
+                raise http.client.IncompleteRead(b'[{"theatre"')
+            return real(method, url, headers, body, timeout)
+
+        watch.http_request = cut_off
+        self.assertIn("Watching", self.ntfy(self.run_check())[0]["title"])
+
+    def test_run_stops_making_requests_when_out_of_time(self):
+        client = watch.Cineplex(self.cfg, {})
+        client.started -= watch.RUN_BUDGET + 1
+        with self.assertRaisesRegex(watch.ApiError, "out of time"):
+            client.showtimes(dt.date(2026, 10, 22))
+        self.assertEqual(self.net.showtime_calls, 0)
 
     def test_network_error_is_retried(self):
         calls = {"n": 0}
@@ -469,7 +525,7 @@ class WatchTest(unittest.TestCase):
     def test_failed_check_logs_unknown(self):
         self.net.cineplex_status = 503
         self.run_check()
-        why = "unknown (this check failed: 2026-12-16: HTTP 503)"
+        why = "unknown (this check failed: 2026-12-16: HTTP 503: error)"
         self.assertEqual(self.state["run_log"], [{"time_run": "October 21 2026, 11:00pm",
                                                   "current_on_sale": why, "current_last_bookable_day": why}])
 

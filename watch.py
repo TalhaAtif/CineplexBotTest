@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import gzip
+import http.client
 import json
 import os
 import re
@@ -69,7 +71,7 @@ MAX_RUN_LOG = 2000  # newest runs kept in the file; older ones stay in the git h
 
 
 def unknown(reason) -> str:
-    return f"{UNKNOWN[:-1]}: {str(reason)[:100]})"
+    return f"{UNKNOWN[:-1]}: {str(reason)[:160]})"
 # Every seat at Junxion is a recliner; these labels add nothing to an alert.
 NOISE_FORMATS = {"recliners", "recliner seating", "reserved seating", "regular", "standard"}
 
@@ -180,6 +182,16 @@ class KeyRejected(ApiError):
     """HTTP 401/403: the public API key rotated, or this network is being blocked."""
 
 
+RETRY_DELAYS = (5, 15)  # seconds to wait before the 2nd and 3rd attempt at a request
+REQUEST_GAP = 1.0  # pause between Cineplex requests, so a run isn't one big burst
+RUN_BUDGET = 150  # seconds a run may start new Cineplex requests; GitHub kills the job at 5 minutes
+
+
+def _snippet(body: bytes) -> str:
+    """The start of an unexpected response, for the logs."""
+    return " ".join(body[:400].decode("utf-8", "replace").split())[:90] or "(empty)"
+
+
 def fetch_showtimes(theatre_id: str, date: dt.date, key: str):
     query = urllib.parse.urlencode({"language": "en", "locationId": theatre_id, "date": date.isoformat()})
     url = f"{API_BASE}/showtimes?{query}"
@@ -190,29 +202,35 @@ def fetch_showtimes(theatre_id: str, date: dt.date, key: str):
         "Referer": CINEPLEX_HOME,
     }
     last_error: ApiError | None = None
-    for attempt in range(3):
-        if attempt:
-            _sleep(2 * attempt)
+    for delay in (0,) + RETRY_DELAYS:
+        if delay:
+            _sleep(delay)
         try:
             status, body = http_request("GET", url, headers)
-        except OSError as err:
-            last_error = ApiError(f"network error: {err}")
+        except (OSError, http.client.HTTPException) as err:
+            last_error = ApiError(f"network error: {err!r}" if not str(err) else f"network error: {err}")
             continue
         if status in (401, 403):
             raise KeyRejected(f"HTTP {status}")
         if status in (204, 404):
             return []
         if status in (408, 429) or status >= 500:
-            last_error = ApiError(f"HTTP {status}")
+            last_error = ApiError(f"HTTP {status}: {_snippet(body)}")
             continue
         if status != 200:
-            raise ApiError(f"HTTP {status}")
+            raise ApiError(f"HTTP {status}: {_snippet(body)}")
+        if body[:2] == b"\x1f\x8b":  # gzip-compressed even though we didn't ask for it
+            try:
+                body = gzip.decompress(body)
+            except (OSError, EOFError):
+                pass
         if not body.strip():
             return []
         try:
             return json.loads(body)
         except ValueError:
-            raise ApiError("got a non-JSON response (blocked, or Cineplex changed its API)") from None
+            # Usually a temporary error or block page at busy times; worth another try after a pause.
+            last_error = ApiError(f"non-JSON response: {_snippet(body)}")
     raise last_error or ApiError("request failed")
 
 
@@ -243,7 +261,7 @@ def discover_api_key() -> str | None:
                 key = extract_api_key(source.decode("utf-8", "replace"))
                 if key:
                     return key
-    except OSError:
+    except (OSError, http.client.HTTPException):
         return None
     return None
 
@@ -263,11 +281,18 @@ class Cineplex:
         self.cache: dict = {}
         self.failures_in_a_row = 0
         self.last_error = ""
+        self.requests = 0
+        self.started = time.monotonic()
 
     def showtimes(self, date: dt.date):
         if date not in self.cache:
             if self.failures_in_a_row >= self.MAX_FAILURES_IN_A_ROW:
                 raise ApiError(f"skipped after repeated failures; last one: {self.last_error}")
+            if time.monotonic() - self.started > RUN_BUDGET:
+                raise ApiError(f"skipped: out of time for this run (last error: {self.last_error or 'none'})")
+            if self.requests:
+                _sleep(REQUEST_GAP)
+            self.requests += 1
             try:
                 self.cache[date] = self._fetch(date)
             except ApiError as err:
@@ -517,8 +542,8 @@ def _post_json(url: str, payload: dict, headers: dict, channel: str) -> bool:
     try:
         status, body = http_request("POST", url, {"Content-Type": "application/json", "User-Agent": BOT_UA, **headers},
                                     json.dumps(payload).encode())
-    except OSError as err:
-        warn(f"{channel} alert failed: {err}")
+    except (OSError, http.client.HTTPException) as err:
+        warn(f"{channel} alert failed: {err!r}")
         return False
     if 200 <= status < 300:
         return True
