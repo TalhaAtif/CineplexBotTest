@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 1 2026, 8:46pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 1 2026, 5:22pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 1 2026, 1:30pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 1 2026, 8:10am", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
@@ -54,7 +55,7 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-05",
-    "checked": "2026-11-01T17:22-05:00"
+    "checked": "2026-11-01T20:46-05:00"
   },
   "last_daily_ping": "2026-11-01",
   "seen": {},
