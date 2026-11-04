@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 4 2026, 6:29am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 3 2026, 10:10pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 3 2026, 6:13pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 3 2026, 12:44pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
@@ -62,9 +63,9 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-14",
-    "checked": "2026-11-03T22:10-05:00"
+    "checked": "2026-11-04T06:29-05:00"
   },
-  "last_daily_ping": "2026-11-03",
+  "last_daily_ping": "2026-11-04",
   "seen": {},
   "window_drops": [
     {
