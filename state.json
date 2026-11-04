@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 3 2026, 10:10pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 3 2026, 6:13pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 3 2026, 12:44pm", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
     {"time_run": "November 3 2026, 4:58am", "current_on_sale": "Clayface, Forgotten Island, Other Mommy, Street Fighter, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 5"},
@@ -60,8 +61,8 @@
   "failures": 0,
   "initialized": true,
   "last_bookable": {
-    "day": "2026-11-05",
-    "checked": "2026-11-03T18:13-05:00"
+    "day": "2026-11-14",
+    "checked": "2026-11-03T22:10-05:00"
   },
   "last_daily_ping": "2026-11-03",
   "seen": {},
@@ -69,10 +70,15 @@
     {
       "at": "2026-10-28T02:13-04:00",
       "through": "2026-11-05"
+    },
+    {
+      "at": "2026-11-03T22:10-05:00",
+      "through": "2026-11-14"
     }
   ],
-  "window_through": "2026-11-05",
+  "window_through": "2026-11-14",
   "new_days_added": [
+    {"day": "Tuesday", "date": "November 3 2026", "time": "10:10pm", "new_days": "November 6 – November 14", "added_after": "Tuesday 6:13pm"},
     {"day": "Wednesday", "date": "October 28 2026", "time": "2:13am", "new_days": "November 1 – November 5", "added_after": "Tuesday 4:54pm"},
     {"day": "Friday", "date": "October 23 2026", "time": "9:55pm", "new_days": "October 30 – October 31", "added_after": "Friday 4:20pm"}
   ]
