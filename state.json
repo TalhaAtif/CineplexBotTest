@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 5 2026, 2:18am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 4 2026, 7:18pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 4 2026, 1:50pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 4 2026, 6:29am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Coyote vs ACME - Family Favourites, Forgotten Island, Godzilla Minus Zero (Japanese w/e.s.t.), Other Mommy, Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Verity, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
@@ -65,9 +66,9 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-14",
-    "checked": "2026-11-04T19:18-05:00"
+    "checked": "2026-11-05T02:18-05:00"
   },
-  "last_daily_ping": "2026-11-04",
+  "last_daily_ping": "2026-11-05",
   "seen": {},
   "window_drops": [
     {
