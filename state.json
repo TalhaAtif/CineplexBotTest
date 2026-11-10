@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 10 2026, 2:38pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 10 2026, 6:41am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 9 2026, 10:26pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 9 2026, 3:38pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
@@ -86,7 +87,7 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-14",
-    "checked": "2026-11-10T06:41-05:00"
+    "checked": "2026-11-10T14:38-05:00"
   },
   "last_daily_ping": "2026-11-10",
   "seen": {},
