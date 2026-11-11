@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 10 2026, 7:35pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Ebenezer, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 19"},
     {"time_run": "November 10 2026, 2:38pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 10 2026, 6:41am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
     {"time_run": "November 9 2026, 10:26pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), Street Fighter, The Cat in the Hat, The Lego Movie - Community Day, Tom & Jerry - Community Day, Wildwood, You Can See Everything", "current_last_bookable_day": "November 14"},
@@ -86,8 +87,8 @@
   "failures": 0,
   "initialized": true,
   "last_bookable": {
-    "day": "2026-11-14",
-    "checked": "2026-11-10T14:38-05:00"
+    "day": "2026-11-19",
+    "checked": "2026-11-10T19:35-05:00"
   },
   "last_daily_ping": "2026-11-10",
   "seen": {},
@@ -99,10 +100,15 @@
     {
       "at": "2026-11-03T22:10-05:00",
       "through": "2026-11-14"
+    },
+    {
+      "at": "2026-11-10T19:35-05:00",
+      "through": "2026-11-19"
     }
   ],
-  "window_through": "2026-11-14",
+  "window_through": "2026-11-19",
   "new_days_added": [
+    {"day": "Tuesday", "date": "November 10 2026", "time": "7:35pm", "new_days": "November 15 – November 19", "added_after": "Tuesday 2:38pm"},
     {"day": "Tuesday", "date": "November 3 2026", "time": "10:10pm", "new_days": "November 6 – November 14", "added_after": "Tuesday 6:13pm"},
     {"day": "Wednesday", "date": "October 28 2026", "time": "2:13am", "new_days": "November 1 – November 5", "added_after": "Tuesday 4:54pm"},
     {"day": "Friday", "date": "October 23 2026", "time": "9:55pm", "new_days": "October 30 – October 31", "added_after": "Friday 4:20pm"}
