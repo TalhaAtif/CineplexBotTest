@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 13 2026, 10:04pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Ebenezer, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Lego Movie - Community Day, Tom & Jerry - Community Day, You Can See Everything", "current_last_bookable_day": "November 19"},
     {"time_run": "November 13 2026, 5:49pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Ebenezer, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Lego Movie - Community Day, Tom & Jerry - Community Day, You Can See Everything", "current_last_bookable_day": "November 19"},
     {"time_run": "November 13 2026, 12:07pm", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Ebenezer, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Lego Movie - Community Day, Tom & Jerry - Community Day, You Can See Everything", "current_last_bookable_day": "November 19"},
     {"time_run": "November 13 2026, 3:42am", "current_on_sale": "A Minecraft Movie - Community Day, Clayface, Ebenezer, Godzilla Minus Zero (Japanese w/e.s.t.), Paddington 2 - Community Day, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Lego Movie - Community Day, Tom & Jerry - Community Day, You Can See Everything", "current_last_bookable_day": "November 19"},
@@ -98,7 +99,7 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-19",
-    "checked": "2026-11-13T17:49-05:00"
+    "checked": "2026-11-13T22:04-05:00"
   },
   "last_daily_ping": "2026-11-13",
   "seen": {},
