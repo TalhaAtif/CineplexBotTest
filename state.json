@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 22 2026, 3:44am", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
     {"time_run": "November 21 2026, 8:13pm", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
     {"time_run": "November 21 2026, 4:03pm", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
     {"time_run": "November 21 2026, 10:15am", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping, The Polar Express - Family Favourites", "current_last_bookable_day": "November 26"},
@@ -126,9 +127,9 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-11-26",
-    "checked": "2026-11-21T20:13-05:00"
+    "checked": "2026-11-22T03:44-05:00"
   },
-  "last_daily_ping": "2026-11-21",
+  "last_daily_ping": "2026-11-22",
   "seen": {},
   "window_drops": [
     {
