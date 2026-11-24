@@ -88,9 +88,13 @@ class FakeNet:
         self.showtime_calls = 0
         self.error_pages = 0  # serve this many HTML error pages (HTTP 200) before real data
         self.gzip = False
+        self.clock = None  # with a FakeClock: timeline events fire once their time comes
+        self.timeline = []  # [(when, callable)], sorted by time
 
     def __call__(self, method, url, headers=None, body=None, timeout=20):
         headers = headers or {}
+        while self.clock and self.timeline and self.timeline[0][0] <= self.clock():
+            self.timeline.pop(0)[1]()
         if method == "POST":
             self.sent.append((url, json.loads(body)))
             return self.notify_status.get(url, 404), b"{}"
@@ -112,6 +116,21 @@ class FakeNet:
         if url in self.chunks:
             return 200, self.chunks[url]
         raise AssertionError(f"unexpected request: {method} {url}")
+
+
+class FakeClock:
+    def __init__(self, start):
+        self.now = start
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += dt.timedelta(seconds=seconds)
+
+
+def tue(h, m):
+    return dt.datetime(2026, 11, 24, h, m, tzinfo=watch.TZ)
 
 
 class WatchTest(unittest.TestCase):
@@ -363,14 +382,29 @@ class WatchTest(unittest.TestCase):
         msg = self.ntfy(self.run_check(dt.datetime(2026, 10, 27, 14, 13, tzinfo=watch.TZ)))[0]
         self.assertEqual(msg["title"], "📅 Junxion Erin Mills posted showtimes through Thu Nov 5")
         self.assertEqual(msg["priority"], 3)
-        self.assertTrue(msg["message"].startswith("New: Fri Oct 30 – Thu Nov 5.\nSpotted Tue Oct 27, 2:13 PM"))
+        self.assertTrue(msg["message"].startswith(
+            "New: Fri Oct 30 – Thu Nov 5.\nWent up between Mon Oct 26 9:00 AM and Tue Oct 27 2:13 PM."))
         self.assertNotIn("Earlier drops", msg["message"])
 
         self.post_days("2026-11-06", "2026-11-12")
         msg = self.ntfy(self.run_check(dt.datetime(2026, 11, 3, 2, 5, tzinfo=watch.TZ)))[0]
-        self.assertIn("Spotted Tue Nov 3, 2:05 AM", msg["message"])
+        self.assertIn("Went up between Tue Oct 27 2:13 PM and Tue Nov 3 2:05 AM.", msg["message"])
         self.assertIn("Earlier drops: Tue Oct 27 2:13 PM", msg["message"])
         self.assertEqual(self.state["window_through"], "2026-11-12")
+
+    def test_drop_ping_on_the_same_day_gives_a_tight_window(self):
+        self.state = {"initialized": True, "window_through": "2026-10-29"}
+        self.post_days("2026-10-22", "2026-10-29")
+        self.run_check(dt.datetime(2026, 10, 27, 18, 40, tzinfo=watch.TZ))
+        self.post_days("2026-10-30", "2026-11-05")
+        msg = self.ntfy(self.run_check(dt.datetime(2026, 10, 27, 18, 45, tzinfo=watch.TZ)))[0]
+        self.assertIn("Went up between 6:40 PM and 6:45 PM on Tue Oct 27.", msg["message"])
+
+    def test_first_drop_after_upgrading_falls_back_to_spotted_time(self):
+        self.state = {"initialized": True, "window_through": "2026-10-29"}  # no window_checked yet
+        self.post_days("2026-10-22", "2026-11-05")
+        msg = self.ntfy(self.run_check(dt.datetime(2026, 10, 27, 21, 19, tzinfo=watch.TZ)))[0]
+        self.assertIn("Spotted Tue Oct 27, 9:19 PM", msg["message"])
 
     def test_lone_presale_far_ahead_is_not_a_drop(self):
         self.state = {"initialized": True, "window_through": "2026-12-13"}
@@ -581,6 +615,112 @@ class WatchTest(unittest.TestCase):
         sent = self.run_check()
         self.assertEqual(self.net.showtime_calls, 6)  # 2 dates x 3 attempts, then the rest are skipped
         self.assertIn("can't read Cineplex", self.ntfy(sent)[0]["title"])
+
+    # ---- drop watch (--drop-watch) ----
+
+    def drop_watch(self, events=(), start=None, **kw):
+        """Run a drop watch on a fake clock from Tue Nov 24 5:45 PM, with Nov 24-26 posted."""
+        self.post_days("2026-11-24", "2026-11-26")
+        clock = FakeClock(start or tue(17, 45))
+        self.net.clock, self.net.timeline = clock, sorted(events, key=lambda e: e[0])
+        watch._sleep = clock.sleep
+        with tempfile.TemporaryDirectory() as tmp:
+            self.cfg.state_file = os.path.join(tmp, "state.local.json")
+            code = watch.drop_watch(self.cfg, clock=clock, **kw)
+            with open(self.cfg.state_file, encoding="utf-8") as fh:
+                self.saved = json.load(fh)
+        self.clock = clock
+        return code, self.ntfy(self.net.sent)
+
+    def post_week_at(self, when, first="2026-11-27", last="2026-12-03"):
+        return when, lambda: self.post_days(first, last)
+
+    def test_drop_watch_pings_start_drop_and_done_then_stops(self):
+        code, sent = self.drop_watch([self.post_week_at(tue(18, 42))])
+        self.assertEqual(code, 0)
+        self.assertEqual([m["title"] for m in sent], [
+            "🔎 Drop watch started",
+            "📅 Junxion Erin Mills posted showtimes through Thu Dec 3",
+            "✅ Drop watch done",
+        ])
+        self.assertEqual(sent[0]["message"], "Checking Junxion every 5 min. Posted through Thu Nov 26 right now.\n"
+                                             "Stops 20 min after the next batch goes up, or at 1:45 AM if nothing does.")
+        self.assertIn("New: Fri Nov 27 – Thu Dec 3.\nWent up between 6:40 PM and 6:45 PM on Tue Nov 24.",
+                      sent[1]["message"])
+        self.assertEqual(sent[2]["message"], "Went up between 6:40 PM and 6:45 PM on Tue Nov 24.\n"
+                                             "Nothing else changed in the 20 min after.\nPosted through Thu Dec 3.")
+        self.assertEqual(self.clock().replace(second=0), tue(19, 5))  # stopped 20 min after the 6:45 sighting
+        self.assertEqual(self.saved["window_through"], "2026-12-03")
+        self.assertEqual(self.saved["run_log"][0]["time_run"], "November 24 2026, 7:05pm")
+        self.assertEqual(len(self.saved["run_log"]), 17)  # a check every 5 min, 5:45 to 7:05
+
+    def test_drop_watch_hourly_pings_and_reports_later_changes(self):
+        def add_film():
+            payload = regular_day("2026-11-28")
+            payload[0]["dates"][0]["movies"].append(
+                movie(9, "Wicked: For Good", [experience(["UltraAVX"], [session(9100, "2026-11-28T20:00:00")])]))
+            self.net.schedule["2026-11-28"] = payload
+
+        code, sent = self.drop_watch([self.post_week_at(tue(20, 7)), (tue(20, 16), add_film)])
+        self.assertEqual([m["title"] for m in sent], [
+            "🔎 Drop watch started", "⏳ Drop watch: still waiting", "⏳ Drop watch: still waiting",
+            "📅 Junxion Erin Mills posted showtimes through Thu Dec 3", "✅ Drop watch done",
+        ])
+        self.assertEqual(sent[1]["message"], "Nothing new as of 6:45 PM. Posted through Thu Nov 26. 13 checks so far.")
+        self.assertTrue(sent[2]["message"].startswith("Nothing new as of 7:45 PM."))
+        self.assertIn("More changed in the 20 min after: new films Wicked: For Good; +1 showtimes.", sent[4]["message"])
+        self.assertEqual(self.clock().replace(second=0), tue(20, 30))
+
+    def test_drop_watch_gives_up_after_max_hours(self):
+        code, sent = self.drop_watch(max_hours=1)
+        self.assertEqual(code, 0)
+        self.assertEqual([m["title"] for m in sent], ["🔎 Drop watch started", "⏹️ Drop watch stopped"])
+        self.assertEqual(sent[1]["message"], "Nothing new by 6:45 PM. Still posted through Thu Nov 26.")
+
+    def test_drop_watch_still_sends_the_doomsday_alert(self):
+        event = (tue(17, 58), lambda: self.net.schedule.update({"2026-12-17": doomsday_dec17()}))
+        code, sent = self.drop_watch([event], max_hours=0.5)
+        titles = [m["title"] for m in sent]
+        self.assertEqual(titles[0], "🔎 Drop watch started")
+        self.assertTrue(titles[1].startswith("🎟️ Doomsday tickets are ON SALE"))
+        self.assertEqual(titles[2:], ["⏹️ Drop watch stopped"])
+
+    def test_drop_watch_rides_out_a_failing_first_check(self):
+        self.net.cineplex_status = 503
+        recover = (tue(17, 57), lambda: setattr(self.net, "cineplex_status", None))
+        code, sent = self.drop_watch([recover, self.post_week_at(tue(18, 3))])
+        self.assertEqual([m["title"] for m in sent], [
+            "🔎 Drop watch started", "⚠️ Doomsday watch can't read Cineplex", "✅ Doomsday watch is reading Cineplex again",
+            "📅 Junxion Erin Mills posted showtimes through Thu Dec 3", "✅ Drop watch done",
+        ])
+        self.assertIn("First check failed; it'll keep retrying.", sent[0]["message"])
+
+    def test_drop_watch_holds_back_first_run_and_daily_pings(self):
+        start = dt.datetime(2026, 11, 24, 23, 50, tzinfo=watch.TZ)  # runs past midnight
+        code, sent = self.drop_watch([self.post_week_at(dt.datetime(2026, 11, 25, 0, 20, tzinfo=watch.TZ))],
+                                     start=start)
+        titles = [m["title"] for m in sent]
+        self.assertNotIn("👀 Watching Junxion Erin Mills for Doomsday", titles)
+        self.assertNotIn("✅ Doomsday watch is working", titles)
+        self.assertEqual(titles[-1], "✅ Drop watch done")
+        watch.keep_awake(True)  # no-op off Windows
+        watch.keep_awake(False)
+
+    def test_cli_drop_watch_options(self):
+        calls = []
+        real = watch.drop_watch
+        watch.drop_watch = lambda cfg, every, max_hours: calls.append((every, max_hours)) or 0
+        old = os.environ.copy()
+        try:
+            os.environ["NTFY_TOPIC"] = "doomsday-test"
+            self.assertEqual(watch.main(["--drop-watch"]), 0)
+            self.assertEqual(watch.main(["--drop-watch", "--every", "60", "--max-hours", "3"]), 0)
+            self.assertEqual(watch.main(["--drop-watch", "--dry-run"]), 2)
+        finally:
+            watch.drop_watch = real
+            os.environ.clear()
+            os.environ.update(old)
+        self.assertEqual(calls, [(300, 8.0), (60, 3.0)])
 
     # ---- CLI ----
 

@@ -91,6 +91,11 @@ Use `python` on Windows, `python3` on Mac/Linux. Set `NTFY_TOPIC` first, as in s
 - `python watch.py --test-notify` sends a test alert.
 - `python watch.py --every 60` checks every minute until you press Ctrl+C. Handy on the night you expect tickets,
   since GitHub checks every 5 minutes at best and its scheduled runs often start late.
+- `python watch.py --drop-watch` is for the evening Junxion posts its next week (Tuesdays, about 6:15–7:35 PM so
+  far). It checks every 5 minutes, pings when it starts and every hour while waiting, sends the usual 📅 ping when
+  the new week goes up, then checks for 20 more minutes and stops with a final ping saying whether anything else
+  changed. The normal checks run too, so a 🎟️ Doomsday alert still goes out. It keeps a Windows PC awake while it
+  runs and gives up after 8 hours; change that with `--max-hours`, or the 5 minutes with `--every SECONDS`.
 
 Local runs keep their memory in `state.local.json` (gitignored), separate from the bot's `state.json`.
 

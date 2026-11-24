@@ -114,6 +114,7 @@ class Config:
     state_file: str = "state.json"
     window_alerts: bool = True
     daily_ping: bool = True
+    mute: frozenset = frozenset()  # Alert kinds not to send
 
     @classmethod
     def from_env(cls, env=os.environ) -> "Config":
@@ -450,6 +451,7 @@ class Alert:
     discord_body: str | None = None
     color: int = 0x5865F2
     mention: bool = False
+    kind: str = ""  # lets a drop watch hold back pings it covers itself (see Config.mute)
 
 
 def fit(text: str, limit: int) -> str:
@@ -485,6 +487,13 @@ def fmt_long_day(d: dt.date) -> str:
 
 def fmt_day(d: dt.date) -> str:
     return f"{d:%a %b} {d.day}"
+
+
+def fmt_between(a: dt.datetime, b: dt.datetime) -> str:
+    """e.g. "between 6:40 PM and 6:45 PM on Tue Nov 24" """
+    if a.date() == b.date():
+        return f"between {fmt_time(a)} and {fmt_time(b)} on {fmt_day(b.date())}"
+    return f"between {fmt_day(a.date())} {fmt_time(a)} and {fmt_day(b.date())} {fmt_time(b)}"
 
 
 def describe_sessions(sessions: list, markdown: bool = False) -> str:
@@ -527,6 +536,9 @@ def on_sale_alert(cfg: Config, sessions: list, first: bool) -> Alert:
 
 def notify(cfg: Config, alert: Alert, dry_run: bool = False) -> bool:
     """Send to every configured channel; True if at least one delivered."""
+    if alert.kind and alert.kind in cfg.mute:
+        log(f"(held back during drop watch) {alert.title}")
+        return True
     if dry_run:
         log(f"[dry run] would alert: {alert.title}\n{alert.body}")
         return True
@@ -631,6 +643,7 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
     today = now.date()
     known = state.get("window_through")
     known = dt.date.fromisoformat(known) if known else None
+    previous_check = state.get("window_checked")
     try:
         min_films = regular_day_min_films(client, today)
         if known is None or known < today:  # first run, or the bot was off long enough to miss drops
@@ -638,23 +651,29 @@ def track_schedule_window(cfg: Config, client: Cineplex, state: dict, now: dt.da
             if end is None:
                 return ""
             state["window_through"] = end.isoformat()
+            state["window_checked"] = now.isoformat(timespec="minutes")
             summary = f"Showtimes there are posted through {fmt_day(end)}; you'll also get a ping each time the next batch drops."
             if known is None and state.get("initialized"):
                 notify(cfg, Alert(f"📅 {cfg.theatre_name} has showtimes up through {fmt_day(end)}",
                                   "You'll get a ping with the date and time each time the next batch drops.",
-                                  click=cfg.theatre_url, color=0x5865F2), dry_run)
+                                  click=cfg.theatre_url, color=0x5865F2, kind="window_baseline"), dry_run)
             return summary
         end = schedule_end(client, known + dt.timedelta(days=1), min_films)
     except ApiError as err:
         warn(f"Skipped the new-showtimes check: {err}")
         return ""
+    state["window_checked"] = now.isoformat(timespec="minutes")
     if end is None:
         return ""
 
     added = known + dt.timedelta(days=1)
     new_dates = fmt_day(added) if added == end else f"{fmt_day(added)} – {fmt_day(end)}"
     drops = state.setdefault("window_drops", [])
-    body = f"New: {new_dates}.\nSpotted {fmt_day(today)}, {fmt_time(now)} (it went up since the previous check)."
+    if previous_check:  # the last check that saw the schedule before this batch
+        when = f"Went up {fmt_between(dt.datetime.fromisoformat(previous_check), now)}."
+    else:
+        when = f"Spotted {fmt_day(today)}, {fmt_time(now)} (it went up since the previous check)."
+    body = f"New: {new_dates}.\n{when}"
     if drops:
         earlier = [dt.datetime.fromisoformat(d["at"]) for d in drops[-4:]]
         body += "\nEarlier drops: " + "; ".join(f"{fmt_day(t.date())} {fmt_time(t)}" for t in reversed(earlier))
@@ -712,16 +731,17 @@ def backfill_new_days(state: dict) -> None:
     state.setdefault(NEW_DAYS, [])
 
 
-def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: bool = False) -> None:
+def run_once(cfg: Config, state: dict, now: dt.datetime | None = None, dry_run: bool = False,
+             client: Cineplex | None = None) -> None:
     record_run(state)  # a run that crashed before logging, or a file from the old one-run format
     backfill_new_days(state)
     try:
-        _run_checks(cfg, state, now or now_local(), dry_run)
+        _run_checks(cfg, state, now or now_local(), dry_run, client)
     finally:
         record_run(state)
 
 
-def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> None:
+def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool, client: Cineplex | None = None) -> None:
     today = now.date()
     dates = [d for d in cfg.dates if d >= today]
     if not dates:
@@ -730,7 +750,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
     state["time_run"] = fmt_run_time(now)
     was_initialized = bool(state.get("initialized"))
 
-    client = Cineplex(cfg, state)
+    client = client or Cineplex(cfg, state)
     sessions: dict[str, Session] = {}
     errors: list[str] = []
     anything_scheduled = False
@@ -823,7 +843,7 @@ def _run_checks(cfg: Config, state: dict, now: dt.datetime, dry_run: bool) -> No
             body=f"Not on sale there yet. Checking {span} every few minutes; you'll get an urgent alert "
                  f"the moment showtimes appear." + (f"\n{window_summary}" if window_summary else "")
                  + (f"\n(Cineplex API OK: {tomorrow_note}.)" if tomorrow_note else ""),
-            priority=3, click=cfg.theatre_url, color=0x23A55A,
+            priority=3, click=cfg.theatre_url, color=0x23A55A, kind="watching",
         )
         if notify(cfg, alert, dry_run):
             state["initialized"] = True
@@ -845,9 +865,174 @@ def daily_ping(cfg: Config, state: dict, today: dt.date, last_bookable: dt.date 
     if not cfg.daily_ping or not last_bookable or state.get("last_daily_ping") == today.isoformat():
         return
     alert = Alert("✅ Doomsday watch is working", f"Last bookable day at {cfg.theatre_name}: {fmt_day(last_bookable)}.",
-                  priority=2, click=cfg.theatre_url, color=0x23A55A)
+                  priority=2, click=cfg.theatre_url, color=0x23A55A, kind="daily")
     if notify(cfg, alert, dry_run):
         state["last_daily_ping"] = today.isoformat()
+
+
+# --------------------------------------------------------------------------- drop watch
+
+DROP_WATCH_EVERY = 5 * 60  # seconds between checks
+DROP_WATCH_HEARTBEAT = dt.timedelta(hours=1)  # "still waiting" ping while nothing's up
+DROP_WATCH_AFTER = dt.timedelta(minutes=20)  # keep checking this long after the batch goes up
+DROP_WATCH_MAX_HOURS = 8.0  # give up if nothing goes up by then
+
+
+def keep_awake(on: bool) -> None:
+    """Keep Windows from sleeping while a drop watch runs (the screen can still turn off)."""
+    try:
+        import ctypes
+        es_continuous, es_system_required = 0x80000000, 0x00000001
+        set_state = ctypes.windll.kernel32.SetThreadExecutionState
+        set_state.argtypes, set_state.restype = [ctypes.c_uint], ctypes.c_uint
+        set_state(es_continuous | (es_system_required if on else 0))
+    except Exception:  # noqa: BLE001 — not Windows, or it isn't allowed; the watch works either way
+        pass
+
+
+def schedule_snapshot(client: Cineplex, first: dt.date, last: dt.date) -> dict:
+    """{"2026-11-27": {film: showtimes}} for days first..last that have anything posted."""
+    snap, day = {}, first
+    while day <= last:
+        counts = {}
+        for movie in iter_movies(client.showtimes(day)):
+            ids = {s.get("vistaSessionId") or s.get("showStartDateTime")
+                   for e in movie.get("experiences") or [] if isinstance(e, dict)
+                   for s in e.get("sessions") or [] if isinstance(s, dict) and s.get("showStartDateTime")}
+            if ids:
+                name = movie.get("name") or movie.get("title")
+                counts[name] = counts.get(name, 0) + len(ids)
+        if counts:
+            snap[day.isoformat()] = counts
+        day += dt.timedelta(days=1)
+    return snap
+
+
+def describe_changes(before: dict, after: dict) -> str:
+    """What changed between two schedule snapshots, or "" if nothing did."""
+    if before == after:
+        return ""
+    films = lambda snap: {f for day in snap.values() for f in day}  # noqa: E731
+    shows = lambda snap: sum(n for day in snap.values() for n in day.values())  # noqa: E731
+    parts = []
+    new_days = sorted(set(after) - set(before))
+    if new_days:
+        parts.append("new days " + ", ".join(fmt_day(dt.date.fromisoformat(d)) for d in new_days))
+    new_films = sorted(films(after) - films(before), key=str.lower)
+    if new_films:
+        parts.append("new films " + ", ".join(new_films))
+    delta = shows(after) - shows(before)
+    if delta:
+        parts.append(f"{delta:+d} showtimes")
+    return "; ".join(parts) or "some showtimes moved"
+
+
+def _posted_range_end(state: dict) -> dt.date | None:
+    days = [state.get("window_through"), (state.get("last_bookable") or {}).get("day")]
+    days = [dt.date.fromisoformat(d) for d in days if d]
+    return max(days) if days else None
+
+
+def _last_run_ok(state: dict) -> bool:
+    entry = (state.get(RUN_LOG) or [{}])[0]
+    day = entry.get("current_last_bookable_day", "")
+    return bool(day) and not day.startswith("unknown")
+
+
+def drop_watch(cfg: Config, every: int = DROP_WATCH_EVERY, max_hours: float = DROP_WATCH_MAX_HOURS,
+               clock=None) -> int:
+    """Check every few minutes until Junxion posts its next batch of showtimes, then keep checking
+    for 20 minutes and stop. Pings when it starts, every hour while waiting, when the batch goes up
+    (the usual 📅 ping), and a final one saying whether anything else changed in those 20 minutes.
+    The normal checks keep running too, so a Doomsday on-sale alert still goes out."""
+    clock = clock or now_local
+    cfg.window_alerts = True
+    cfg.mute = frozenset({"watching", "window_baseline", "daily"})  # these pings cover them
+    state = load_state(cfg.state_file)
+    state["initialized"] = True  # the start ping replaces the first-run message; failures alert after 3 checks
+    started = clock()
+    stop_by = started + dt.timedelta(hours=max_hours)
+    next_check = started
+    next_heartbeat = started + DROP_WATCH_HEARTBEAT
+    drop = None  # set once the next batch is seen
+    checks = crashes = 0
+    posted = lambda: (fmt_day(dt.date.fromisoformat(state["window_through"]))  # noqa: E731
+                      if state.get("window_through") else "unknown")
+    keep_awake(True)
+    try:
+        while True:
+            now = clock()
+            through_before = state.get("window_through")
+            checked_before = state.get("window_checked")
+            last_drop_before = (state.get("window_drops") or [None])[-1]
+            client = Cineplex(cfg, state)
+            try:
+                run_once(cfg, state, now=now, client=client)
+                crashes = 0
+            except Exception as err:  # noqa: BLE001 — keep watching through one bad run
+                crashes += 1
+                warn(f"Check crashed: {err!r}")
+                if crashes >= 3:
+                    notify(cfg, Alert("⚠️ Drop watch stopped", f"It crashed 3 times in a row: {err!r}",
+                                      priority=4, color=0xF0B232))
+                    return 1
+            save_state(cfg.state_file, state)
+            checks += 1
+            ok = crashes == 0 and _last_run_ok(state)
+            log(f"Drop watch check {checks}: {'ok' if ok else 'FAILED'}, posted through {posted()}.")
+
+            if checks == 1:
+                status = f"Posted through {posted()} right now." if ok else "First check failed; it'll keep retrying."
+                notify(cfg, Alert("🔎 Drop watch started",
+                                  f"Checking Junxion every {every // 60} min. {status}\nStops 20 min after the next "
+                                  f"batch goes up, or at {fmt_time(stop_by)} if nothing does.",
+                                  click=cfg.theatre_url, color=0x5865F2))
+
+            last_drop = (state.get("window_drops") or [None])[-1]
+            if drop is None and last_drop is not None and last_drop != last_drop_before:
+                first_new = dt.date.fromisoformat(through_before) + dt.timedelta(days=1)
+                drop = {"at": now, "after": dt.datetime.fromisoformat(checked_before) if checked_before else None,
+                        "first": first_new, "last": _posted_range_end(state) + dt.timedelta(days=2)}
+                try:
+                    drop["snapshot"] = schedule_snapshot(client, drop["first"], drop["last"])
+                except ApiError as err:
+                    warn(f"Couldn't record the new batch for the 20-minute comparison: {err}")
+                    drop["snapshot"] = None
+
+            if drop is not None:
+                if now >= drop["at"] + DROP_WATCH_AFTER:
+                    went_up = (f"Went up {fmt_between(drop['after'], drop['at'])}." if drop["after"]
+                               else f"Spotted {fmt_time(drop['at'])}.")
+                    try:
+                        if not ok or drop["snapshot"] is None:
+                            raise ApiError("a check failed")
+                        last = max(drop["last"], _posted_range_end(state) + dt.timedelta(days=2))
+                        changes = describe_changes(drop["snapshot"], schedule_snapshot(client, drop["first"], last))
+                        verdict = (f"More changed in the 20 min after: {changes}." if changes
+                                   else "Nothing else changed in the 20 min after.")
+                    except ApiError:
+                        verdict = "Couldn't confirm the 20 min after (a check failed)."
+                    notify(cfg, Alert("✅ Drop watch done", f"{went_up}\n{verdict}\nPosted through {posted()}.",
+                                      click=cfg.theatre_url, color=0x23A55A))
+                    return 0
+            elif now >= stop_by:
+                notify(cfg, Alert("⏹️ Drop watch stopped",
+                                  f"Nothing new by {fmt_time(now)}. Still posted through {posted()}.",
+                                  click=cfg.theatre_url, color=0x5865F2))
+                return 0
+            elif now >= next_heartbeat:
+                note = "" if ok else " The last check failed; retrying."
+                notify(cfg, Alert("⏳ Drop watch: still waiting",
+                                  f"Nothing new as of {fmt_time(now)}. Posted through {posted()}. "
+                                  f"{checks} checks so far.{note}", priority=2, color=0x5865F2))
+                while next_heartbeat <= now:
+                    next_heartbeat += DROP_WATCH_HEARTBEAT
+
+            while next_check <= clock():
+                next_check += dt.timedelta(seconds=every)
+            _sleep((next_check - clock()).total_seconds())
+    finally:
+        keep_awake(False)
 
 
 # --------------------------------------------------------------------------- CLI
@@ -892,6 +1077,10 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="check and print only: no alerts, no state changes")
     parser.add_argument("--test-notify", action="store_true", help="send a test alert and exit")
     parser.add_argument("--every", type=int, metavar="SECONDS", help="keep running locally, checking every N seconds")
+    parser.add_argument("--drop-watch", action="store_true",
+                        help="check every 5 min until the next batch of showtimes goes up, then stop 20 min later")
+    parser.add_argument("--max-hours", type=float, default=DROP_WATCH_MAX_HOURS, metavar="HOURS",
+                        help=f"with --drop-watch: give up after this long (default {DROP_WATCH_MAX_HOURS:g})")
     args = parser.parse_args(argv)
 
     cfg = Config.from_env()
@@ -902,6 +1091,15 @@ def main(argv=None) -> int:
         ok = notify(cfg, Alert("✅ Test from Doomsday watch", "Alerts are working.", click=cfg.theatre_url))
         print("Delivered." if ok else "Not delivered; see warnings above.")
         return 0 if ok else 1
+    if args.drop_watch:
+        if args.dry_run:
+            print("--drop-watch sends pings, so it can't be combined with --dry-run.", file=sys.stderr)
+            return 2
+        try:
+            return drop_watch(cfg, every=max(30, args.every or DROP_WATCH_EVERY), max_hours=args.max_hours)
+        except KeyboardInterrupt:
+            print("\nDrop watch stopped.")
+            return 0
 
     while True:
         state = load_state(cfg.state_file)
