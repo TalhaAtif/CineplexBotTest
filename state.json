@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 24 2026, 11:05pm", "current_on_sale": "A PAW Patrol Christmas - Family Favourites, Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "December 3"},
     {"time_run": "November 24 2026, 3:50pm", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
     {"time_run": "November 24 2026, 5:21am", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
     {"time_run": "November 23 2026, 7:17pm", "current_on_sale": "Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Cat in the Hat, The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "November 26"},
@@ -133,11 +134,12 @@
   "failures": 0,
   "initialized": true,
   "last_bookable": {
-    "day": "2026-11-26",
-    "checked": "2026-11-24T15:50-05:00"
+    "day": "2026-12-03",
+    "checked": "2026-11-24T23:05-05:00"
   },
   "last_daily_ping": "2026-11-24",
   "seen": {},
+  "window_checked": "2026-11-24T23:05-05:00",
   "window_drops": [
     {
       "at": "2026-10-28T02:13-04:00",
@@ -154,10 +156,15 @@
     {
       "at": "2026-11-17T21:19-05:00",
       "through": "2026-11-26"
+    },
+    {
+      "at": "2026-11-24T23:05-05:00",
+      "through": "2026-12-03"
     }
   ],
-  "window_through": "2026-11-26",
+  "window_through": "2026-12-03",
   "new_days_added": [
+    {"day": "Tuesday", "date": "November 24 2026", "time": "11:05pm", "new_days": "November 27 – December 3", "added_after": "Tuesday 3:50pm"},
     {"day": "Tuesday", "date": "November 17 2026", "time": "9:19pm", "new_days": "November 20 – November 26", "added_after": "Tuesday 2:45pm"},
     {"day": "Tuesday", "date": "November 10 2026", "time": "7:35pm", "new_days": "November 15 – November 19", "added_after": "Tuesday 2:38pm"},
     {"day": "Tuesday", "date": "November 3 2026", "time": "10:10pm", "new_days": "November 6 – November 14", "added_after": "Tuesday 6:13pm"},
