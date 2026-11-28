@@ -1,5 +1,6 @@
 {
   "run_log": [
+    {"time_run": "November 28 2026, 6:36am", "current_on_sale": "A PAW Patrol Christmas - Family Favourites, Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "December 3"},
     {"time_run": "November 27 2026, 9:36pm", "current_on_sale": "A PAW Patrol Christmas - Family Favourites, Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "December 3"},
     {"time_run": "November 27 2026, 2:53pm", "current_on_sale": "A PAW Patrol Christmas - Family Favourites, Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "December 3"},
     {"time_run": "November 27 2026, 5:46am", "current_on_sale": "A PAW Patrol Christmas - Family Favourites, Ebenezer, Focker in-Law, Hexed, Ramayana (Hindi w/e.s.t.), The Hunger Games: Sunrise on the Reaping", "current_last_bookable_day": "December 3"},
@@ -143,11 +144,11 @@
   "initialized": true,
   "last_bookable": {
     "day": "2026-12-03",
-    "checked": "2026-11-27T21:36-05:00"
+    "checked": "2026-11-28T06:36-05:00"
   },
-  "last_daily_ping": "2026-11-27",
+  "last_daily_ping": "2026-11-28",
   "seen": {},
-  "window_checked": "2026-11-27T21:36-05:00",
+  "window_checked": "2026-11-28T06:36-05:00",
   "window_drops": [
     {
       "at": "2026-10-28T02:13-04:00",
